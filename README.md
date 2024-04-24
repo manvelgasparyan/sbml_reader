@@ -14,3 +14,7 @@
 - sys
 - sympy
 - tkinter
+
+
+**Copyright 2017-2024 Manvel Gasparyan.
+ODEparse is freely available under the MIT License. **
