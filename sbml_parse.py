@@ -98,23 +98,6 @@ def get_table(title, data):
     window = DataTableWindow(title, data)
     window.show()
     app.exec_()
-#---
-"""
-This Python function asks the user to provide an integer as an input.
-"""
-def get_number():
-    #Tkinter window
-    root = tkinter.Tk()
-    #Hide the main window
-    root.withdraw()  
-    #Prompt the user for a number input
-    number = simpledialog.askinteger("Input", "Please provide the r value")
-    
-    if number is not None:
-        return number  #Return the entered number
-    else:
-        print("No input provided.")
-        return None  # Return None if no input is provided or dialog is canceled
 #==========================================================================================================================================
 #==========================================================================================================================================
 """
