@@ -1,14 +1,15 @@
-import numpy , libsbml, os, math, re, sys, tkinter, sympy, json
+import numpy , libsbml, os, math, re, sys, tkinter, sympy, json, time
 from tkinter import filedialog, simpledialog
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QSizePolicy, QTabWidget
 from PyQt5.QtGui import QFont
-#==========================================================================================================================================
-#==========================================================================================================================================
+
+#============================================================================
+#============================================================================
 numpy.set_printoptions(threshold=numpy.inf)     #Adjust NumPy display settings to print the entire array without truncation
 bold = "\033[1m"     #ANSI escape code for bold text
 reset = "\033[0m"    #Reset ANSI escape code
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function can be used to read of an SBML file. Upon execution, it 
 initiates a dialog prompting the user to select the desired SBML file for 
@@ -41,31 +42,48 @@ def read_sbml_file():
     except Exception as e:
         print(f"An error occurred: {e}")
         return None, None
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the title and the data, and visualizes the table.
 """
-class DataTableWindow(QMainWindow):  
-    #---
-    def __init__(self, title, data):
+app = QApplication.instance()  # Check if QApplication instance already exists
+if not app:
+    app = QApplication(sys.argv)  # If not, create a new instance
+    
+font = QFont()
+font.setPointSize(12)  # Set the font size as per your preference
+app.setFont(font)
+#---
+class Window(QMainWindow):
+    def __init__(self):
         super().__init__()
-
-        self.title = title
-        self.data = data
-        self.initUI()
-    #--- 
-    def initUI(self):
-        self.setWindowTitle(self.title)
-        self.setGeometry(100, 100, 800, 600)
-
+        
+        desktop = QApplication.desktop()
+        screen_rect = desktop.screenGeometry()
+        width, height = screen_rect.width(), screen_rect.height()
+        self.setGeometry(100, 100, int(width * 0.5), int(height * 0.5))
+        # To put in full screen, you have to comment the 4 lines above and uncomment the line below
+        # self.showMaximized()
+        
+        self.central_widget = QTabWidget()
+        self.setCentralWidget(self.central_widget)
+        
+    def setTitle(self, title):
+        self.setWindowTitle(title)
+    
+    def add_layout(self, title, data):
+        self.tab = QWidget()
+        self.central_widget.addTab(self.tab, title)
+        layout = QVBoxLayout()
         self.tableWidget = QTableWidget()
-        self.tableWidget.setColumnCount(len(self.data))
-        self.tableWidget.setHorizontalHeaderLabels(list(self.data.keys()))
-        self.tableWidget.setRowCount(len(self.data[next(iter(self.data))]))
+        
+        self.tableWidget.setColumnCount(len(data))
+        self.tableWidget.setHorizontalHeaderLabels(list(data.keys()))
+        self.tableWidget.setRowCount(len(data[next(iter(data))]))
 
-        for i, key in enumerate(self.data):
-            for j, value in enumerate(self.data[key]):
+        for i, key in enumerate(data):
+            for j, value in enumerate(data[key]):
                 self.tableWidget.setItem(j, i, QTableWidgetItem(str(value)))
 
         self.scrollArea = QWidget()
@@ -77,29 +95,35 @@ class DataTableWindow(QMainWindow):
             QSizePolicy.Expanding,
             QSizePolicy.Expanding
         )
-        self.setCentralWidget(self.scrollArea)
+        # self.setCentralWidget(self.scrollArea)
 
         self.resizeColumnsToContents()
+        
+        layout.addWidget(self.scrollArea)
+        self.tab.setLayout(layout)
     #---
     def resizeColumnsToContents(self):
         for i in range(self.tableWidget.columnCount()):
             self.tableWidget.resizeColumnToContents(i)
 #---
-app = QApplication.instance()  # Check if QApplication instance already exists
-if not app:
-    app = QApplication(sys.argv)  # If not, create a new instance
-#---
-def get_table(title, data):
-    # Set application font to system font
-    font = QFont()
-    font.setPointSize(14)  # Set the font size as per your preference
-    app.setFont(font)
-
-    window = DataTableWindow(title, data)
-    window.show()
-    app.exec_()
-#==========================================================================================================================================
-#==========================================================================================================================================
+"""
+This Python function asks the user to provide an integer as an input.
+"""
+def get_number():
+    #Tkinter window
+    root = tkinter.Tk()
+    #Hide the main window
+    root.withdraw()  
+    #Prompt the user for a number input
+    number = simpledialog.askinteger("Input", "Please provide the r value")
+    
+    if number is not None:
+        return number  #Return the entered number
+    else:
+        print("No input provided.")
+        return None  # Return None if no input is provided or dialog is canceled
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the information 
 about model species as output.
@@ -112,11 +136,10 @@ def get_model_species (model):
     buffered_species_names = [species.getName() for species in model.getListOfSpecies() if species.getConstant()]
     #---
     #Intial species ID
-    species_id = [species.getId() for species in model.getListOfSpecies()]
-    species_id = [item for item in species_id if item not in buffered_species_id]
+    species_id = [species.getId() for species in model.getListOfSpecies() if not species.getConstant()]
+    
     #Species Names
-    species_names = [species.getName() for species in model.getListOfSpecies()]
-    species_names = [item for item in species_names if item not in buffered_species_names]
+    species_names = [species.getName() for species in model.getListOfSpecies() if not species.getConstant()]
     #---
     #Get the vector of initial concentrations
     initial_concentrations_ox = [model.getSpecies(id).getInitialConcentration() for id in species_id]
@@ -130,8 +153,8 @@ def get_model_species (model):
     buffered_concentrations = [buffered_amounts_ox[i] if buffered_amounts_ox[i] != 0 and not math.isnan(buffered_amounts_ox[i]) else buffered_concentrations_ox[i] for i in range(len(buffered_species_id))]
     #---
     return species_id, species_names, buffered_species_id, buffered_species_names, initial_concentrations, buffered_concentrations
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the information 
 about model reactions as output.
@@ -162,8 +185,8 @@ def get_model_reactions (model):
         reactions_info_species_id.append(f"{react} {direction} {prod}")    
     #---
     return reactions_id, reactions_names, reactions_info_species_id, reactions_info_species_name
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the information 
 about model parameters and the model compartments as output.
@@ -195,8 +218,8 @@ def get_model_parameters (model):
     compartment_size = [model.getCompartment(i).getSize() for i in range(model.getNumCompartments())]
     #---
     return parameter_id, parameter_values, compartment_id, compartment_size
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the information 
 about model functions as output.
@@ -235,13 +258,16 @@ def get_model_functions (model):
     function_id_list = []
     function_list = []
     #---
-    for i in range(model.getNumFunctionDefinitions()):
+    for i in range(model.getNumFunctionDefinitions()):        
         function = model.getFunctionDefinition(i)
         function_id = function.getId()
         math_ast = function.getMath()
         math_string = libsbml.formulaToString(math_ast)
         function_id_list.append(function_id)
         function_list.append(math_string)
+        ###print(f"{bold}Function{reset} {i+1}:")
+        ###print("ID:", function_id)
+        ###print("Expression:", math_string)
     #---
     arguments = []
     expressions = []
@@ -256,8 +282,8 @@ def get_model_functions (model):
         expressions.append(expression_i)
         #---
     return function_id_list, function_list, arguments, expressions
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the information 
 about model reaction rates as output.
@@ -282,12 +308,12 @@ def get_model_rates_1 (model):
     reaction_rate_species_Names = reaction_rate_species_ID.copy()
     for i, formula in enumerate(reaction_rate_species_Names):
         for species_id, species_name in zip(species_ids, species_names):
-            formula = formula.replace(species_id, species_name)
+            formula = re.sub(r'\b{}\b'.format(re.escape(species_id)), species_name, formula) # Changement de la fonction replace
         reaction_rate_species_Names[i] = formula
     #---
     return reaction_rate_species_ID, reaction_rate_species_Names
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function replaces the functions in reaction rates with the 
 corresponding expressions
@@ -296,10 +322,13 @@ def get_model_rates_2(model):
     #---
     function_id, _, arguments, expressions = get_model_functions(model)
     #---
-    reaction_rate_species_ID, reaction_rate_species_Names = get_model_rates_1 (model)
+    reaction_rate_species_ID, _ = get_model_rates_1 (model)
     #---
     reaction_rate_species_ID_new = reaction_rate_species_ID.copy()
-    reaction_rate_species_Names_new = reaction_rate_species_Names.copy()
+    #---
+    species_id, species_names, buffered_species_id, buffered_species_names, _, _ = get_model_species(model)
+    species_ids = species_id + buffered_species_id
+    species_names = species_names + buffered_species_names
     #---
     for j in range(len(reaction_rate_species_ID_new)):
         #---
@@ -307,41 +336,29 @@ def get_model_rates_2(model):
         for i in range(len(f_j)):
             elem_ji = f_j[i]
             #---
-            new_id = elem_ji[0]
-            new_args = elem_ji[1].split(',')
-            new_name = new_id+ '(' + ','.join(new_args) + ')'
+            fun_id = elem_ji[0]
+            new_args = elem_ji[1].replace(" ","").split(',') # AJOUT : remove spaces
+            new_name = fun_id+ '(' + ', '.join(new_args) + ')'
             #---
-            old_arg = arguments[function_id.index(new_id)]
-            old_expres = expressions[function_id.index(new_id)]
+            old_arg = arguments[function_id.index(fun_id)]
+            old_expres = expressions[function_id.index(fun_id)]
             #---
             new_expess = old_expres
-            for z in range(len(old_arg)):
-                new_expess = new_expess.replace(old_arg[z], new_args[z]) 
+            for i in range(len(old_arg)):
+                new_expess = re.sub(r'\b{}\b'.format(re.escape(old_arg[i])), new_args[i], new_expess) # Changement de la fonction replace
             #---
             reaction_rate_species_ID_new[j] = reaction_rate_species_ID_new[j].replace(new_name, new_expess)     
     #---
-    for j in range(len(reaction_rate_species_Names_new)):
-        #---
-        f_j =  [[func, re.search(re.escape(func) + r'\((.*?)\)', reaction_rate_species_Names_new[j]).group(1)] for func in function_id if re.search(re.escape(func) + r'\((.*?)\)', reaction_rate_species_Names_new[j])]
-        for i in range(len(f_j)):
-            elem_ji = f_j[i]
-            #---
-            new_id = elem_ji[0]
-            new_args = elem_ji[1].split(',')
-            new_name = new_id+ '(' + ','.join(new_args) + ')'
-            #---
-            old_arg = arguments[function_id.index(new_id)]
-            old_expres = expressions[function_id.index(new_id)]
-            #---
-            new_expess = old_expres
-            for z in range(len(old_arg)):
-                new_expess = new_expess.replace(old_arg[z], new_args[z]) 
-            #---
-            reaction_rate_species_Names_new[j] = reaction_rate_species_Names_new[j].replace(new_name, new_expess)     
+    reaction_rate_species_Names_new = reaction_rate_species_ID_new.copy()
+    #---
+    for i, formula in enumerate(reaction_rate_species_Names_new):
+        for species_id, species_name in zip(species_ids, species_names):
+            formula = re.sub(r'\b{}\b'.format(re.escape(species_id)), species_name, formula) # Changement de la fonction replace
+        reaction_rate_species_Names_new[i] = formula
     #---
     return reaction_rate_species_ID_new, reaction_rate_species_Names_new
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the stoichiometric 
 matrix as output.
@@ -368,8 +385,8 @@ def get_stoichiometric_matrix (model):
     stoichiometric_matrix = numpy.delete(stoichiometric_matrix, buffered_indices_list, axis=0)
     #---        
     return stoichiometric_matrix
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 """
 This Python function takes the model as input and returns the model as a system 
 of ordinary differential equations as output.
@@ -423,41 +440,51 @@ def get_ode_model_sym (model):
     reaction_rate_species_ID = [item for sublist in reaction_rate_species_ID.tolist() for item in sublist]
     #---
     return reaction_rate_species_ID, dx_dt_ID
-#==========================================================================================================================================
-#==========================================================================================================================================
+
+#============================================================================
+#============================================================================
 #1. Extract and print the model ID
 model, file_path, file_name = read_sbml_file()
 #---
+
+exec_time = time.time()
+
+
 #2. Extract and print species
 species_id, species_names, buffered_species_id, buffered_species_names, initial_concentrations, buffered_concentrations = get_model_species (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #3. Extract and print the functions
 function_id, function_list, arguments, expressions = get_model_functions(model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #4. Extract and print the reactions
 reactions_id, reactions_names, reactions_info_species_id, reactions_info_species_name = get_model_reactions (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #5. Extract and print model parameters
 parameter_id, parameter_values, compartment_id, compartment_size = get_model_parameters (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #6. Extract and print the reaction rates
 reaction_rate_species_ID, reaction_rate_species_Names = get_model_rates_1 (model)
 #---
 reaction_rate_species_ID_new, reaction_rate_species_Names_new = get_model_rates_2 (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #7. Extract the stoichiometric matrix
 stoichiometric_matrix = get_stoichiometric_matrix (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
 #8. Extract the system of ordinary differential equations
 rates_sym, odes_sym = get_ode_model_sym (model)
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
+
+
+exec_time -= time.time()
+
+
 print(f"{bold}BioModel ID:\n{reset}{file_name}\n")
 #---
 print(f"{bold}\nThe list of species:\n{reset}{species_id}\n\n{bold}The species names:\n{reset}{species_names}\n")
@@ -492,10 +519,11 @@ print(f"{bold}\nThe reaction rates in terms of species IDs without functions:\n{
 #---
 print(f"{bold}\nThe simplified rates:\n{reset}{rates_sym}\n")
 print(f"{bold}\nThe simplified system of ordinary differential equations:\n{reset}{odes_sym}\n")
-#==========================================================================================================================================
-#==========================================================================================================================================
+#============================================================================
+#============================================================================
+#============================================================================
 #Table 1: Species
-title_species = f"{file_name}: List of species"
+title_species = "List of species"
 #---
 s = len(species_id)
 b = len(buffered_species_id)
@@ -511,7 +539,7 @@ data_species = {
                 }
 #----------------------------------------------------------------------------
 #Table 2: Reactions
-title_reactions = f"{file_name}: List of reactions"
+title_reactions = "List of reactions"
 #---
 data_reactions = {
                   'Reation ID': reactions_id, 
@@ -526,7 +554,7 @@ data_reactions = {
                  }
 #----------------------------------------------------------------------------
 #Table 3: Parameters
-title_parameters = f"{file_name}: List of parameters "
+title_parameters = "List of parameters "
 #---
 data_parameters = {
                   'Parameter Symbol': sympy.symbols(f'p1:{len(parameter_id)+1}'),
@@ -535,7 +563,7 @@ data_parameters = {
                   }
 #----------------------------------------------------------------------------
 #Table 4: Compartments
-title_compartments = f"{file_name}: List of compartments"
+title_compartments = "List of compartments"
 #---
 data_compartments = {
                   'Compartment symbol': sympy.symbols(f'c1:{len(compartment_id)+1}'),
@@ -544,7 +572,7 @@ data_compartments = {
                   }
 #----------------------------------------------------------------------------
 #Table 5: Functions
-title_functions = f"{file_name}: List of functions"
+title_functions = "List of functions"
 #---
 data_functions = {
                   'Function ID': function_id, 
@@ -553,7 +581,7 @@ data_functions = {
                  } 
 #----------------------------------------------------------------------------
 #Table 6: system of ODEs 
-title_ode = f"{file_name}: The system of ordinary differential equations"
+title_ode = "The system of ordinary differential equations"
 #---
 data_ode = {
             'Species ID': species_id,
@@ -562,24 +590,33 @@ data_ode = {
             'Simplified system of ODEs': odes_sym,
            }
 #----------------------------------------------------------------------------
-#Get the tables
+#Display the tables
 #---
-get_table(title_species, data_species)
+window = Window()
+window.setTitle(file_name)
 #---
-get_table(title_parameters, data_parameters)
+window.add_layout(title_species, data_species)
 #---
-get_table(title_compartments, data_compartments)
+window.add_layout(title_parameters, data_parameters)
+#---
+window.add_layout(title_compartments, data_compartments)
 #---
 if function_id:
-    get_table(title_functions, data_functions)
+    window.add_layout(title_functions, data_functions)
+#---    
+window.add_layout(title_reactions, data_reactions)
 #---
-get_table(title_reactions, data_reactions)
+window.add_layout(title_ode, data_ode)
 #---
-get_table(title_ode, data_ode)
-#==========================================================================================================================================
-#==========================================================================================================================================
+# window.show()
+# app.exec_()
+#---
+#============================================================================
+#============================================================================
 #Define the outputs we want to save as .json
 selected_outputs = {
+    'Species symbol': str(sympy.symbols(f'X1:{s+1}') + sympy.symbols(f'B1:{b+1}')), 
+    'Species concentrations': str(sympy.symbols(f'x1:{s+1}') + sympy.symbols(f'b1:{b+1}')),
     "Species ID": species_id,
     "Species Names": species_names,
     "Buffered Species ID": buffered_species_id,
@@ -590,6 +627,7 @@ selected_outputs = {
     "Function Arguments": arguments,
     "Function Expressions": expressions,
     "Parameter IDs": parameter_id,
+    "Parameter Symbols": str(sympy.symbols(f'p1:{len(parameter_id)+1}')),
     "Parameter Values": parameter_values,
     "Compartment ID": compartment_id,
     "Compartment Size": compartment_size,
@@ -598,15 +636,23 @@ selected_outputs = {
     "Reactions in Terms of Species Names": reactions_info_species_name,
     "Reaction Rates in Terms of Species Ids": reaction_rate_species_ID,
     "Reaction Rates in Terms of Species Names": reaction_rate_species_Names,
-    "Stoichiometric matrix": stoichiometric_matrix.tolist()
+    "The simplified rates": str(rates_sym),
+    "The simplified system of ordinary differential equations": str(odes_sym),
+    "Stoichiometric matrix": str(stoichiometric_matrix)
 }
 #------------------------------------------------------------------------------
 #Define the file path for the json file
-json_file_path = str(file_name) + ".json"
+try:
+    os.mkdir("data")
+except OSError:
+    pass
+
+json_file_path = "data/" + str(file_name) + ".json"
 #Save the outputs to the json file
 with open(json_file_path, "w") as json_file:
     json.dump(selected_outputs, json_file, indent=4)
     json_file.write('\n')
 print(bold + "\nThe outputs saved to:\n" + reset, json_file_path)    
-#==========================================================================================================================================
-#==========================================================================================================================================
+
+
+print(f"{bold}\nExecution time:{reset} {abs(exec_time)} seconds\n")
